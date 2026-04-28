@@ -27,6 +27,7 @@ class CitationDict(TypedDict):
     tafsir_id: int
     pos: int
     text: str
+    normalize_text: str
 
 
 class LLMResponse(BaseModel):
@@ -108,7 +109,6 @@ def upsert(table, conn, keys, data_iter):
 def load_df() -> pd.DataFrame:
     """Load all citations and add an internal normalized_text column."""
     df = pd.read_sql_table(TABLE, DB, schema=SCHEMA, index_col="id")
-    df["normalized_text"] = df["text"].apply(normalize_arabic)
     # We only load data that has not been predicted yet
     df = df[df["sura"].isna()]
     return df
@@ -120,7 +120,6 @@ def write_to_db(df: pd.DataFrame) -> None:
     The `normalized_text` column is for in-memory use only and must be dropped
     before writing, since it does not exist in the DB schema.
     """
-    df = df.drop(columns=["normalized_text"], errors="ignore")
     df = df.drop_duplicates(subset=["subchapter_id", "pos"], keep="last")
     df.to_sql(
         name=TABLE,
@@ -170,6 +169,7 @@ def collect_citations_from_files() -> List[CitationDict]:
                     "tafsir_id": tafsir_id,
                     "pos": idx,
                     "text": text,
+                    "normalized_text": normalize_arabic(text),
                 }
             )
     return rows
@@ -184,7 +184,6 @@ def run_insert() -> None:
 
     df_new = pd.DataFrame(rows)
     print(f"Inserting {len(df_new)} citations...")
-    # No normalized_text here, but write_to_db handles it gracefully.
     write_to_db(df_new)
     print("Insert done.")
 

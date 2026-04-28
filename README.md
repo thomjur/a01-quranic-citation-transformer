@@ -52,6 +52,7 @@ The script expects a table `quranic_citations.citations` with:
 | `tafsir_id`     | integer |                                |
 | `pos`           | integer |                                |
 | `text`          | text    | original (vocalized) citation  |
+| `normalized_text` | text  | normalizedcitation             |
 | `sura`          | integer | nullable, set by predict step  |
 | `aya_start`     | integer | nullable, set by predict step  |
 | `aya_end`       | integer | nullable, set by predict step  |
@@ -70,6 +71,7 @@ CREATE TABLE IF NOT EXISTS quranic_citations.citations
     id integer NOT NULL GENERATED ALWAYS AS IDENTITY ( INCREMENT 1 START 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1 ),
     subchapter_id text COLLATE pg_catalog."default" NOT NULL,
     text text COLLATE pg_catalog."default" NOT NULL,
+    normalized_text text COLLATE pg_catalog."default",
     pos integer NOT NULL,
     sura integer,
     aya_start integer,
