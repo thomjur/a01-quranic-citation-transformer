@@ -234,13 +234,13 @@ def run_match(df: pd.DataFrame) -> None:
     print("Matching Sura/Ayat in Quran... this may take a while.")
     # Loading aya table from DB
     df_aya = pd.read_sql_table("aya_normalized", DB, "quran", index_col="index")
+    # Matching normalized quotes with normalized ayat in Quran
+    # Note that there is no multi-aya matching currently and aya_end_m / aya_start_m are always the same
     df["sura_m"] = df["normalized_text"].map(lambda x: df_aya[df_aya["normalized_text"].str.contains(x, case=False, na=False, regex=False)]["sura_id"].iloc[0] if not df_aya[df_aya["normalized_text"].str.contains(x, case=False, na=False, regex=False)].empty else None).astype("Int64")
     df["aya_start_m"] = df["normalized_text"].map(lambda x: df_aya[df_aya["normalized_text"].str.contains(x, case=False, na=False, regex=False)]["aya_id"].iloc[0] if not df_aya[df_aya["normalized_text"].str.contains(x, case=False, na=False, regex=False)].empty else None).astype("Int64")
     df["aya_end_m"] = df["normalized_text"].map(lambda x: df_aya[df_aya["normalized_text"].str.contains(x, case=False, na=False, regex=False)]["aya_id"].iloc[0] if not df_aya[df_aya["normalized_text"].str.contains(x, case=False, na=False, regex=False)].empty else None).astype("Int64")
-    # DEBUG
-    print(df.head())
     df.to_sql(
-        name="citations_debug",
+        name=TABLE,
         schema=SCHEMA,
         con=DB,
         if_exists="replace",
