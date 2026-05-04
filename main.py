@@ -131,6 +131,22 @@ def write_to_db(df: pd.DataFrame) -> None:
     )
 
 
+def normalize_quran_db() -> None:
+    """One-time function to normalize a Aya table in databse.
+
+    This was necessary to enable the match-search."""
+    df = pd.read_sql_table("aya", DB, schema="quran", index_col="index")
+    df["normalized_text"] = df["content"].map(normalize_arabic)
+    # Creating a new table to asure the old DB stays as is
+    df.to_sql(
+        name="aya_normalized",
+        schema="quran",
+        con=DB,
+        if_exists="replace",
+        index=True,
+    )
+
+
 # ---------- Insert step ----------
 
 
@@ -213,6 +229,26 @@ def predict_one(client: Mistral, original_text: str) -> LLMResponse | None:
         return None
 
 
+def run_match(df: pd.DataFrame) -> None:
+    """Match sura/aya in Quran."""
+    print("Matching Sura/Ayat in Quran... this may take a while.")
+    # Loading aya table from DB
+    df_aya = pd.read_sql_table("aya_normalized", DB, "quran", index_col="index")
+    df["sura_m"] = df["normalized_text"].map(lambda x: df_aya[df_aya["normalized_text"].str.contains(x, case=False, na=False, regex=False)]["sura_id"].iloc[0] if not df_aya[df_aya["normalized_text"].str.contains(x, case=False, na=False, regex=False)].empty else None).astype("Int64")
+    df["aya_start_m"] = df["normalized_text"].map(lambda x: df_aya[df_aya["normalized_text"].str.contains(x, case=False, na=False, regex=False)]["aya_id"].iloc[0] if not df_aya[df_aya["normalized_text"].str.contains(x, case=False, na=False, regex=False)].empty else None).astype("Int64")
+    df["aya_end_m"] = df["normalized_text"].map(lambda x: df_aya[df_aya["normalized_text"].str.contains(x, case=False, na=False, regex=False)]["aya_id"].iloc[0] if not df_aya[df_aya["normalized_text"].str.contains(x, case=False, na=False, regex=False)].empty else None).astype("Int64")
+    # DEBUG
+    print(df.head())
+    df.to_sql(
+        name="citations_debug",
+        schema=SCHEMA,
+        con=DB,
+        if_exists="replace",
+        index=True,
+        index_label="id",
+    )
+
+
 def run_predict(df: pd.DataFrame) -> None:
     """Predict sura/aya for all rows lacking a prediction."""
     if not API_KEY:
@@ -251,6 +287,14 @@ def run_predict(df: pd.DataFrame) -> None:
     print("Predict done.")
 
 
+def show_stats() -> None:
+    """Display differences between LLM predicted sura/aya and direkt sura/aya matching in Quran."""
+    df = pd.read_sql_table("citations_debug", DB, schema=SCHEMA, index_col="id")
+    df_diff = df[(df["sura"] != df["sura_m"]) | (df["aya_start"] != df["aya_start_m"])]
+    print(f"There are {df_diff.shape[0]} mismatches between LLM prediction and the direct matching approach. See the diff file for details.")
+    df_diff.to_csv("diff.csv")
+
+
 def apply_and_save(
     df: pd.DataFrame, predictions: List[Tuple[str, LLMResponse]]
 ) -> None:
@@ -287,9 +331,27 @@ def main() -> None:
         action="store_true",
         help="Predict sura/aya for unresolved citations.",
     )
+    parser.add_argument(
+        "-m",
+        "--match",
+        action="store_true",
+        help="Predict sura/aya based on direct matching with Quran. Does currently not work for multi-aya quotes.",
+    )
+    parser.add_argument(
+            "-nt",
+            "--normalize-table",
+            action="store_true",
+            help="One-time function to normalize aya table in DB. Should only be called once and depends on the database (should most likely never be used outside A01 project)."
+            )
+    parser.add_argument(
+            "-s",
+            "--stats",
+            action="store_true",
+            help="Show differences between LLM predictions and parsing of sura/aya."
+            )
     args = parser.parse_args()
 
-    if not (args.insert or args.predict):
+    if not (args.insert or args.predict or args.normalize_table or args.match or args.stats):
         parser.print_help()
         return
 
@@ -302,6 +364,20 @@ def main() -> None:
             print("No data loaded from DB.")
             return
         run_predict(df)
+
+    if args.match:
+        # We will always rematch entire table
+        df = pd.read_sql_table(TABLE, DB, schema=SCHEMA, index_col="id")
+        if df.empty:
+            print("No data loaded from DB.")
+            return
+        run_match(df)
+
+    if args.stats:
+        show_stats()
+
+    if args.normalize_table:
+        normalize_quran_db()
 
 
 if __name__ == "__main__":
